@@ -12,35 +12,9 @@ name_list_client:
 #include <netinet/in.h>
 #include <netdb.h>
 
-#define PORT_NO 12225
+#define PORT_NO 12220
 #define BUFSIZE 10000
 #define COMMSIZE 100
-#define MAX_STR_LEN 69
-
-struct date {
-  int y;
-  int m;
-  int d;
-};
-
-struct profile {
-  int number;
-  char name[MAX_STR_LEN+1];
-  struct date birthday;
-  char address[MAX_STR_LEN+1];
-  char *comment;
-};
-
-void print_profile(struct profile *p)
-{
-  char date[11];
-
-  printf("number:   %d\n", p->number);
-  printf("name:     %s\n", p->name);
-  printf("birthday: %d-%d-%d\n", p->birthday.y, p->birthday.m, p->birthday.d);
-  printf("address:  %s\n", p->address);
-  printf("comment:  %s\n", p->comment);
-}
 
 int main(int argc, char* argv[])
 {
@@ -66,59 +40,75 @@ int main(int argc, char* argv[])
   cl_sock = socket(AF_INET, SOCK_STREAM, 0);
   if (cl_sock == -1) {
     printf("error: sock\n");
-    return (1);
+    exit(1);
   }
 
   bzero((char*) & addr.sin_addr, sizeof(addr.sin_addr));
   memcpy((char*) & addr.sin_addr, (char*)hp->h_addr, hp->h_length);
   addr.sin_family = AF_INET;
-  addr.sin_port = htons(PORT_NO); 
+  addr.sin_port = htons(PORT_NO);
 
   // make a connection
   if ((connect(cl_sock, (struct sockaddr *)&addr, sizeof(addr))) == -1) {
     printf("error: connect\n");
-    return (1);
+    exit(1);
   }
+
+  printf("============ Manual ===========\n");
+  printf("%%Q   : Quit\n");
+  printf("%%C   : Check how many profiles you have\n");
+  printf("%%P n : Print n profile(s)\n");
+  printf("%%R file: Read file\n");
+  printf("%%W file: Write data to file\n");
+  printf("%%F word: Find word\n");
+  printf("%%S n: Sort nth column\n");
+  printf("===============================\n");
 
   while(1) {
     memset(command, '\0', COMMSIZE);
-
     printf("\nInput command: \n");
+
     // read command input
-    read_bufsize = read(0, command, COMMSIZE);
-    if (read_bufsize == -1) {
+    if ((read_bufsize = read(0, command, COMMSIZE)) == -1) {
       printf("error: read\n");
-      return 1;
+      exit(1);
     }
 
     // send command line to the server from stdin
-    send_bufsize = send(cl_sock, command, strlen(command), 0);
-    if (send_bufsize == -1) {
+    if ((send_bufsize = send(cl_sock, command, strlen(command), 0)) == -1) {
       printf("error: send\n");
-      return 1;
+      exit(1);
     }
 
     memset(buf, '\0', BUFSIZE);
-    
+
     // receive results from server
-    recv_bufsize = recv(cl_sock, buf, BUFSIZE, 0);
-    if (recv_bufsize == -1) {
-      printf("error: recv\n");
-      return 1;
-    } 
-   
-    if (strcmp(buf, "exit") == 0) {
-      printf("EXIT\n");
-      exit(0);
-    }
-   
-    // print content to stdin
-    write_bufsize = write(1, buf, BUFSIZE);
-    if (write_bufsize == -1) {
-      printf("error: write\n");
-      return 1;
-    }
+    while(1){
+      if ((recv_bufsize = recv(cl_sock, buf, BUFSIZE, 0)) == -1) {
+        printf("error: recv\n");
+        exit(1);
+      } else if (recv_bufsize == 0) {
+        break;
+      } else if (strcmp(buf, "exit") == 0) {
+        printf("EXIT\n");
+        exit(0);
+      }
+
+      int buf_size = strlen(buf);
+      if (buf[buf_size-1] == '\n') break;
+
+      // print content to stdin
+      if ((write_bufsize = write(1, buf, BUFSIZE)) == -1) {
+        printf("error: write\n");
+        exit(1);
+      } else if (strcmp(buf, "end") == 0) {
+        break;
+      }
+   }
+   if ((write_bufsize = write(1, buf, BUFSIZE)) == -1) {
+     printf("error: write\n");
+     exit(1);
+   }
   }
   close(cl_sock);
-  printf("close client socket");
 }
