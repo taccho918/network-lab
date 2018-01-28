@@ -557,11 +557,12 @@ void cmd_sort(int column)
   memset(sendbuf, '\0', BUFSIZE);
 
   if(abs_col > 5 || abs_col < 1) {
-    sprintf(sendbuf, "invalid column number");
+    sprintf(sendbuf, "invalid column number\n");
     return;
   }
   if(column > 0) {
     q_sort(profile_data_store, 0, profile_data_nitems-1, compare_functions[abs_col-1]);
+    sprintf(sendbuf, "Sorted by column %d\n", column);
   }
 }
 

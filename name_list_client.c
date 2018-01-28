@@ -28,7 +28,6 @@ void process_print(int cl_sock)
       perror("recv");
       exit(1);
     } else if (recv_size == 0) {
-      close(cl_sock);
       break;
     } else {
       // do nothing
