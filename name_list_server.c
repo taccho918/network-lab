@@ -15,14 +15,14 @@ name_list_server:
 #include <ctype.h>
 #include <errno.h>
 
-#define PORT_NO 12220
+#define PORT_NO 12222
 #define BUFSIZE 10000
 #define MAX_LINE_LEN 1024
 #define MAX_STR_LEN 69
 
 char sendbuf[BUFSIZE];
 int profile_data_nitems = 0; //CSVデータの数
-void parse_line(char *line);
+void parse_line(char *line, int sock);
 
 struct date {
   int y;
@@ -101,6 +101,14 @@ int get_line(FILE *fp, char *line)
   return 1;  /* succeeded */
 }
 
+/* date_to_string */
+void *date_to_string(char buf[], struct date *date)
+{
+  sprintf(buf, "%04d-%02d-%02d", date->y, date->m, date->d);
+
+  return buf;
+}
+
 /*  fprint_profile_csv: %Wコマンドを利用したとき，書き出すデータを表示する */
 void fprint_profile_csv(FILE *fp, struct profile *p)
 {
@@ -109,14 +117,6 @@ p->birthday.m, p->birthday.d, p->address, p->comment );
 
   //printf("%d,%s,%d-%d-%d,%s,%s\n", p->number, p->name, p->birthday.y,
   //p->birthday.m, p->birthday.d, p->address, p->comment );
-}
-
-/* date_to_string */
-void *date_to_string(char buf[], struct date *date)
-{
-  sprintf(buf, "%04-%02-%02", date->y, date->m, date->d);
-
-  return buf;
 }
 
 /* print_profile: 5つの情報を出力する */
@@ -284,100 +284,161 @@ void cmd_check()
   sprintf(sendbuf, "%d profile(s)\n", profile_data_nitems);
 }
 
-void cmd_print2(int nitems, int sock)
-{
-  int i=0;
-  struct profile *p;
-  p=&profile_data_store[0];
-  int send_size;
-  char number_buf[25];
-  char name_buf[69];
-  char date_buf[30];
-  char address_buf[69];
-  char comment_buf[69];
-
-  memset(sendbuf, '\0', BUFSIZE);
-  if (nitems == 0) {
-    for(i=0; i<profile_data_nitems; i++) {
-      p=&profile_data_store[i];
-      memset(number_buf, '\0', sizeof(number_buf));
-      memset(name_buf, '\0', sizeof(name_buf));
-      memset(date_buf, '\0', sizeof(date_buf));
-      memset(address_buf, '\0', sizeof(address_buf));
-      memset(comment_buf, '\0', sizeof(comment_buf));
-
-      sprintf(number_buf, "number:  %d\n", p->number);
-      sprintf(name_buf, "name:  %s\n", p->name);
-      sprintf(date_buf, "birthday:  %d-%d-%d\n", p->birthday.y, p->birthday.m, p->birthday.d);
-      sprintf(address_buf, "address:  %s\n", p->address);
-      sprintf(comment_buf, "comment:  %s\n\n", p->comment);
-
-      print_profile(p);
-      printf("\n");
-      if ((send_size = send(sock, number_buf, sizeof(number_buf), 0)) == -1 ) {
-        printf("error: send\n");
-        exit(1);
-      }
-      if ((send_size = send(sock, name_buf, sizeof(name_buf), 0)) == -1 ) {
-        printf("error: send\n");
-        exit(1);
-      }
-      if ((send_size = send(sock, date_buf, sizeof(date_buf), 0)) == -1 ) {
-        printf("error: send\n");
-        exit(1);
-      }
-      if ((send_size = send(sock, address_buf, sizeof(address_buf), 0)) == -1 ) {
-        printf("error: send\n");
-        exit(1);
-      }
-      if ((send_size = send(sock, comment_buf, sizeof(comment_buf), 0)) == -1 ) {
-        printf("error: send\n");
-        exit(1);
-      }
-    }
-  }
-  memset(number_buf, 0, sizeof(number_buf));
-  sprintf(number_buf, "end");
-  if ((send_size = send(sock, number_buf, sizeof(number_buf), 0)) == -1 ) {
-    printf("error: send\n");
-    exit(1);
-  } 
-}
-
 /**
  * Command %P count
  */
-void cmd_print(int nitems)
+void cmd_print(int nitems, int sock)
 {
-  int i = 0;
+  int i;
   struct profile *p;
-  p = &profile_data_store[0];
+  p=&profile_data_store[0];
+  int send_size;
+  char printbuf[1024];
 
-  memset(sendbuf, '\0', BUFSIZE);
-  /*  n = 0: 全件表示 */
-  if(nitems == 0){
-    for (i = 0; i < profile_data_nitems; i++) {
-      p = &profile_data_store[i];
-      print_profile(&profile_data_store[i]);
+  if (nitems == 0) {
+    for(i=0; i<profile_data_nitems; i++) {
+      p=&profile_data_store[i];
 
+      memset(printbuf, '\0', sizeof(printbuf));
+      sprintf(printbuf, "number:  %d\n", p->number);
+      if ((send_size = send(sock, printbuf, sizeof(printbuf), 0)) == -1 ) {
+        perror("send");
+        exit(1);
+      }
 
+      memset(printbuf, '\0', sizeof(printbuf));
+      sprintf(printbuf, "name:  %s\n", p->name);
+      if ((send_size = send(sock, printbuf, sizeof(printbuf), 0)) == -1 ) {
+        perror("send");
+        exit(1);
+      }
+
+      memset(printbuf, '\0', sizeof(printbuf));
+      sprintf(printbuf, "birthday:  %d-%d-%d\n", p->birthday.y, p->birthday.m, p->birthday.d);
+      if ((send_size = send(sock, printbuf, sizeof(printbuf), 0)) == -1 ) {
+        perror("send");
+        exit(1);
+      }
+
+      memset(printbuf, '\0', sizeof(printbuf));
+      sprintf(printbuf, "address:  %s\n", p->address);
+      if ((send_size = send(sock, printbuf, sizeof(printbuf), 0)) == -1 ) {
+        perror("send");
+        exit(1);
+      }
+
+      memset(printbuf, '\0', sizeof(printbuf));
+      sprintf(printbuf, "comment:  %s\n\n", p->comment);
+      if ((send_size = send(sock, printbuf, sizeof(printbuf), 0)) == -1 ) {
+        perror("send");
+        exit(1);
+      }
+      print_profile(p);
       printf("\n");
     }
   }
+
   /* n > 0: n件分表示  */
   if(nitems > 0){
     for(i = 0; i < nitems; i++) {
-      print_profile(&profile_data_store[i]);
+      p=&profile_data_store[i];
+
+      memset(printbuf, '\0', sizeof(printbuf));
+      sprintf(printbuf, "number:  %d\n", p->number);
+      if ((send_size = send(sock, printbuf, sizeof(printbuf), 0)) == -1 ) {
+        perror("send");
+        exit(1);
+      }
+
+      memset(printbuf, '\0', sizeof(printbuf));
+      sprintf(printbuf, "name:  %s\n", p->name);
+      if ((send_size = send(sock, printbuf, sizeof(printbuf), 0)) == -1 ) {
+        perror("send");
+        exit(1);
+      }
+
+      memset(printbuf, '\0', sizeof(printbuf));
+      sprintf(printbuf, "birthday:  %d-%d-%d\n", p->birthday.y, p->birthday.m, p->birthday.d);
+      if ((send_size = send(sock, printbuf, sizeof(printbuf), 0)) == -1 ) {
+        perror("send");
+        exit(1);
+      }
+
+      memset(printbuf, '\0', sizeof(printbuf));
+      sprintf(printbuf, "address:  %s\n", p->address);
+      if ((send_size = send(sock, printbuf, sizeof(printbuf), 0)) == -1 ) {
+        perror("send");
+        exit(1);
+      }
+
+      memset(printbuf, '\0', sizeof(printbuf));
+      sprintf(printbuf, "comment:  %s\n\n", p->comment);
+      if ((send_size = send(sock, printbuf, sizeof(printbuf), 0)) == -1 ) {
+        perror("send");
+        exit(1);
+      }
+      print_profile(p);
       printf("\n");
     }
+    memset(sendbuf, 0, sizeof(sendbuf));
+    sprintf(sendbuf, "end");
+    printf("%s", sendbuf);
+    if ((send_size = send(sock, sendbuf, sizeof(sendbuf), 0)) == -1 ) {
+      perror("send");
+      exit(1);
+    }
   }
+
   /* n < 0: 後ろから-n件表示 */
   if(nitems < 0){
     i = profile_data_nitems + nitems;
     nitems = profile_data_nitems;
     for(; i < nitems; i++) {
-      print_profile(&profile_data_store[i]);
+      p=&profile_data_store[i];
+
+      memset(printbuf, '\0', sizeof(printbuf));
+      sprintf(printbuf, "number:  %d\n", p->number);
+      if ((send_size = send(sock, printbuf, sizeof(printbuf), 0)) == -1 ) {
+        perror("send");
+        exit(1);
+      }
+
+      memset(printbuf, '\0', sizeof(printbuf));
+      sprintf(printbuf, "name:  %s\n", p->name);
+      if ((send_size = send(sock, printbuf, sizeof(printbuf), 0)) == -1 ) {
+        perror("send");
+        exit(1);
+      }
+
+      memset(printbuf, '\0', sizeof(printbuf));
+      sprintf(printbuf, "birthday:  %d-%d-%d\n", p->birthday.y, p->birthday.m, p->birthday.d);
+      if ((send_size = send(sock, printbuf, sizeof(printbuf), 0)) == -1 ) {
+        perror("send");
+        exit(1);
+      }
+
+      memset(printbuf, '\0', sizeof(printbuf));
+      sprintf(printbuf, "address:  %s\n", p->address);
+      if ((send_size = send(sock, printbuf, sizeof(printbuf), 0)) == -1 ) {
+        perror("send");
+        exit(1);
+      }
+
+      memset(printbuf, '\0', sizeof(printbuf));
+      sprintf(printbuf, "comment:  %s\n\n", p->comment);
+      if ((send_size = send(sock, printbuf, sizeof(printbuf), 0)) == -1 ) {
+        perror("send");
+        exit(1);
+      }
+      print_profile(p);
       printf("\n");
+    }
+    memset(sendbuf, 0, sizeof(sendbuf));
+    sprintf(sendbuf, "end");
+    printf("%s", sendbuf);
+    if ((send_size = send(sock, sendbuf, sizeof(sendbuf), 0)) == -1 ) {
+      perror("send");
+      exit(1);
     }
   }
 }
@@ -385,7 +446,7 @@ void cmd_print(int nitems)
 /**
  * Command %R filename
  */
-void cmd_read(char *filename)
+void cmd_read(char *filename, int sock)
 {
   FILE *fp;
   char line[MAX_LINE_LEN + 1];
@@ -398,10 +459,11 @@ void cmd_read(char *filename)
     exit(1);
   } else {
     sprintf(sendbuf, "Filename: %s\n", filename);
+    //sprintf(sendbuf, "end");
   }
 
   while (get_line(fp, line)) {
-    parse_line(line);
+    parse_line(line, sock);
   }
 
   fclose(fp);
@@ -434,12 +496,14 @@ void cmd_write(char *filename)
 /**
  * Command %F word
  */
-void cmd_find(char *word)
+void cmd_find(char *word, int sock)
 {
   int i;
   struct profile *p;
   char number_str[8];
   char birthday_str[11];
+  int send_size;
+  char printbuf[1024];
 
   memset(sendbuf, '\0', BUFSIZE);
   trim_ncode(word);
@@ -454,7 +518,42 @@ void cmd_find(char *word)
         strcmp(birthday_str, word) == 0 ||
         strcmp(p->address, word) == 0   ||
         strcmp(p->comment, word) == 0) {
-      print_profile(p);
+
+          memset(printbuf, '\0', sizeof(printbuf));
+          sprintf(printbuf, "number:  %d\n", p->number);
+          if ((send_size = send(sock, printbuf, sizeof(printbuf), 0)) == -1 ) {
+            perror("send");
+            exit(1);
+          }
+
+          memset(printbuf, '\0', sizeof(printbuf));
+          sprintf(printbuf, "name:  %s\n", p->name);
+          if ((send_size = send(sock, printbuf, sizeof(printbuf), 0)) == -1 ) {
+            perror("send");
+            exit(1);
+          }
+
+          memset(printbuf, '\0', sizeof(printbuf));
+          sprintf(printbuf, "birthday:  %d-%d-%d\n", p->birthday.y, p->birthday.m, p->birthday.d);
+          if ((send_size = send(sock, printbuf, sizeof(printbuf), 0)) == -1 ) {
+            perror("send");
+            exit(1);
+          }
+
+          memset(printbuf, '\0', sizeof(printbuf));
+          sprintf(printbuf, "address:  %s\n", p->address);
+          if ((send_size = send(sock, printbuf, sizeof(printbuf), 0)) == -1 ) {
+            perror("send");
+            exit(1);
+          }
+
+          memset(printbuf, '\0', sizeof(printbuf));
+          sprintf(printbuf, "comment:  %s\n\n", p->comment);
+          if ((send_size = send(sock, printbuf, sizeof(printbuf), 0)) == -1 ) {
+            perror("send");
+            exit(1);
+          }
+
       printf("\n");
     } else {
       //sprintf(sendbuf, "no match\n");
@@ -483,27 +582,29 @@ void cmd_sort(int column)
 /************************************************************
         command dispatcher
  ************************************************************/
-void exec_command(char cmd, char *param)
+void exec_command(char cmd, char *param, int sock)
 {
+  int send_size;
+
   switch (cmd) {
     case 'Q': cmd_quit();              break;   //done
     case 'C': cmd_check();             break;   //done
-    case 'P': cmd_print(atoi(param));  break;
-    case 'R': cmd_read(param);         break;   //done
+    case 'R': cmd_read(param, sock);         break;   //done
     case 'W': cmd_write(param);        break;   //done
-    case 'F': cmd_find(param);         break;
+    case 'F': cmd_find(param, sock);         break;
     case 'S': cmd_sort(atoi(param));   break;   //done
     default:
-      sprintf(sendbuf, "%%c command is not existed: ignored\n", cmd);
       break;
   }
 }
 
 /* parse_line: get_lineで得られた入力行lineの1文字目を見て'%'かどうかを判断する */
-void parse_line(char *line)
+void parse_line(char *line, int sock)
 {
   if (line[0] == '%') { //コマンド入力として処理
-    exec_command(line[1], &line[3]);
+    exec_command(line[1], &line[3], sock);
+  } else if ( line[0] == '\n') {
+    // do nothing
   } else { //CSVの行を処理
     new_profile(&profile_data_store[profile_data_nitems], line);
     profile_data_nitems++;
@@ -514,11 +615,15 @@ int main(int argc, char** argv)
 {
   struct sockaddr_in addr;
   int s_sock;
+  int new_sock;
+  int cl_addr_len;
+  int recv_bufsize;
+  char buf[BUFSIZE];
 
   // 1. Create socket
   s_sock = socket(AF_INET, SOCK_STREAM, 0);
   if (s_sock == -1) {
-    printf("error: socket\n");
+    perror("socket");
     exit(1);
   }
 
@@ -531,7 +636,7 @@ int main(int argc, char** argv)
 
   // 2. Name socket
   if (bind(s_sock, (struct sockaddr*)&addr, sizeof(addr)) == -1) {
-    printf("error: bind\n");
+    perror("bind");
     exit(1);
   }
   printf("2. Named socket\n");
@@ -539,60 +644,68 @@ int main(int argc, char** argv)
   // 3. Listen connection request
  LABEL1:
   if (listen(s_sock, 5) == -1) {
-    printf("error: listen\n");
+    perror("listen");
     exit(1);
   }
   printf("3. listening connection request\n");
 
   // 4. Accept connection request
-  int new_sock;
-  int cl_addr_len;
-  int recv_bufsize;
-  int send_bufsize;
-  char buf[BUFSIZE];
-
   memset(sendbuf, '\0', BUFSIZE);
 
   cl_addr_len = sizeof(addr);
 
   while(1) {
     if ((new_sock = accept(s_sock, (struct sockaddr*)&addr, &cl_addr_len)) == -1) {
-      printf("error: accept\n");
-      return (1);
+      perror("accept");
+      exit(1);
     }
     printf("4. Accepted connection request\n");
 
     // 5. Recieve command
     while(1) {
       memset(buf, '\0', BUFSIZE);
+
       if ((recv_bufsize = recv(new_sock, buf, BUFSIZE, 0)) == -1) {
-        printf("error: recv\n");
+        perror("recv");
         exit(1);
       } else if (recv_bufsize == 0) break;
+      else {
+        // do nothing
+      }
 
       printf("5. Received command\n");
       printf("%s\n", buf);
 
       // 6. Process the command
-      if (strcmp(buf, "%Q\n") == 0) {
+      if (buf[1] == 'Q') {
         memset(sendbuf, '\0', BUFSIZE);
         sprintf(sendbuf, "exit");
 
-        if ((send_bufsize = send(new_sock, sendbuf, BUFSIZE, 0)) == -1) {
-          printf("error: send\n");
+        if ((recv_bufsize = send(new_sock, sendbuf, BUFSIZE, 0)) == -1) {
+          perror("send");
           exit(1);
         }
         goto LABEL1; // go to listen(LABEL1) and quit current client connection
+
       } else if (buf[1] == 'P') {
-        cmd_print2(atoi(&buf[3]), new_sock);
+        cmd_print(atoi(&buf[3]), new_sock);
+        sleep(1);
+        memset(sendbuf, '\0', BUFSIZE);
+        sprintf(sendbuf, "end");
+
+        if ((recv_bufsize = send(new_sock, sendbuf, sizeof(sendbuf), 0)) == -1 ) {
+          perror("send");
+          exit(1);
+        }
       }
       else {
-        parse_line(buf);
+        // parse command except %Q & %P
+        parse_line(buf, new_sock);
         memset(buf, '\0', BUFSIZE);
 
         // 7. Send results
-        if ((send_bufsize = send(new_sock, sendbuf, BUFSIZE, 0)) == -1) {
-          printf("error: send\n");
+        if ((recv_bufsize = send(new_sock, sendbuf, BUFSIZE, 0)) == -1) {
+          perror("send");
           exit(1);
         }
       }
