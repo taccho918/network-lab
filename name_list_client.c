@@ -33,6 +33,10 @@ void process_print(int cl_sock)
     } else {
       // do nothing
     }
+
+    // break the loop when the recieved data has "end"
+    if (strstr(buf, "end") != NULL) break;
+
     if ((recv_size = write(1, buf, sizeof(buf))) == -1) {
       perror("write");
       exit(1);
@@ -123,7 +127,7 @@ int main(int argc, char* argv[])
 
   while(1) {
     memset(buf, '\0', BUFSIZE);
-    printf("\nInput command or CSV data: \n");
+    printf("\nInput command:\n");
 
     // read command input
     if ((read_bufsize = read(0, buf, BUFSIZE)) == -1) {
@@ -137,17 +141,21 @@ int main(int argc, char* argv[])
       return 1;
     }
 
-    switch (buf[1]) {
-      case 'P': process_print(cl_sock);  printf("print\n"); break;
-      case 'Q': process_else(cl_sock); break;
-      case 'C': process_else(cl_sock); break;
-      case 'R': process_else(cl_sock); break;
-      case 'W': process_else(cl_sock); break;
-      case 'F': process_else(cl_sock); break;
-      case 'S': process_else(cl_sock); break;
+    if (buf[0] == '%') {
+      switch (buf[1]) {
+        case 'P': process_print(cl_sock); break;
+        case 'Q': process_else(cl_sock); break;
+        case 'C': process_else(cl_sock); break;
+        case 'R': process_else(cl_sock); break;
+        case 'W': process_else(cl_sock); break;
+        case 'F': process_print(cl_sock); break;
+        case 'S': process_else(cl_sock); break;
       default:
         printf("command is not listed here\n");
         break;
+      }
+    } else {
+      //create_new_profile
     }
   }
   close(cl_sock);

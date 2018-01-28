@@ -380,13 +380,6 @@ void cmd_print(int nitems, int sock)
       print_profile(p);
       printf("\n");
     }
-    memset(sendbuf, 0, sizeof(sendbuf));
-    sprintf(sendbuf, "end");
-    printf("%s", sendbuf);
-    if ((send_size = send(sock, sendbuf, sizeof(sendbuf), 0)) == -1 ) {
-      perror("send");
-      exit(1);
-    }
   }
 
   /* n < 0: 後ろから-n件表示 */
@@ -432,13 +425,6 @@ void cmd_print(int nitems, int sock)
       }
       print_profile(p);
       printf("\n");
-    }
-    memset(sendbuf, 0, sizeof(sendbuf));
-    sprintf(sendbuf, "end");
-    printf("%s", sendbuf);
-    if ((send_size = send(sock, sendbuf, sizeof(sendbuf), 0)) == -1 ) {
-      perror("send");
-      exit(1);
     }
   }
 }
@@ -534,7 +520,7 @@ void cmd_find(char *word, int sock)
           }
 
           memset(printbuf, '\0', sizeof(printbuf));
-          sprintf(printbuf, "birthday:  %d-%d-%d\n", p->birthday.y, p->birthday.m, p->birthday.d);
+          sprintf(printbuf, "birthday:  %s\n", birthday_str);
           if ((send_size = send(sock, printbuf, sizeof(printbuf), 0)) == -1 ) {
             perror("send");
             exit(1);
@@ -556,7 +542,7 @@ void cmd_find(char *word, int sock)
 
       printf("\n");
     } else {
-      //sprintf(sendbuf, "no match\n");
+      sprintf(sendbuf, "no match\n");
     }
   }
 }
@@ -591,8 +577,7 @@ void exec_command(char cmd, char *param, int sock)
     case 'C': cmd_check();             break;   //done
     case 'R': cmd_read(param, sock);         break;   //done
     case 'W': cmd_write(param);        break;   //done
-    case 'F': cmd_find(param, sock);         break;
-    case 'S': cmd_sort(atoi(param));   break;   //done
+    case 'S': cmd_sort(atoi(param));   break;
     default:
       break;
   }
@@ -697,9 +682,20 @@ int main(int argc, char** argv)
           perror("send");
           exit(1);
         }
-      }
-      else {
-        // parse command except %Q & %P
+
+      } else if (buf[1] == 'F') {
+        cmd_find(&buf[3], new_sock);
+        sleep(1);
+        memset(sendbuf, '\0', BUFSIZE);
+        sprintf(sendbuf, "end");
+
+        if ((recv_bufsize = send(new_sock, sendbuf, sizeof(sendbuf), 0)) == -1 ) {
+          perror("send");
+          exit(1);
+        }
+
+      } else {
+        // parse command except %Q, %P & %F
         parse_line(buf, new_sock);
         memset(buf, '\0', BUFSIZE);
 
