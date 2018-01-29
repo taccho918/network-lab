@@ -12,8 +12,9 @@ name_list_client:
 #include <netinet/in.h>
 #include <netdb.h>
 
-#define PORT_NO 12222
 #define BUFSIZE 10000
+#define MAX_LINE_LEN 1024
+#define MSG_FLG "end"
 
 void process_print(int cl_sock)
 {
@@ -34,7 +35,7 @@ void process_print(int cl_sock)
     }
 
     // break the loop when the recieved data has "end"
-    if (strstr(buf, "end") != NULL) break;
+    if (strcmp(buf, MSG_FLG) == 0) break;
 
     if ((recv_size = write(1, buf, sizeof(buf))) == -1) {
       perror("write");
@@ -77,6 +78,54 @@ void process_else(int cl_sock)
   }
 }
 
+void process_csv(int cl_sock)
+{
+  char buf[BUFSIZE];
+  char replybuffer[10];
+  int recv_size;
+
+  while(1) {
+    memset(buf, '\0', BUFSIZE);
+    recv_size = recv(cl_sock, buf, BUFSIZE, 0);
+
+    if (recv_size == -1) {
+      perror("recv");
+      exit(1);
+    } else if (recv_size == 0) {
+      break;
+    } else  {
+      // do nothing
+    }
+
+    if (strcmp(buf,"end") == 0) break;
+  }
+}
+
+/* subst: c1とc2の文字を入れ替える */
+int subst(char *str, char c1, char c2)
+{
+  int n = 0;
+
+  while(*str){ //文字列が最後の'\0'になるまで繰り返す
+      if(*str == c1){
+  *str = c2;
+    n++;
+      }
+      str++;
+    }
+  return n; //置き換えた数を返す
+}
+
+/*  get_line: １行読み込む */
+int get_line(FILE *fp, char *line)
+{
+  if (fgets(line, MAX_LINE_LEN + 1, fp) == NULL){
+    return 0;   /* failed or EOF */
+  }
+  subst(line, '\n', '\0');
+
+  return 1;  /* succeeded */
+}
 
 int main(int argc, char* argv[])
 {
@@ -85,10 +134,7 @@ int main(int argc, char* argv[])
   struct hostent* hp;
 
   char buf[BUFSIZE]; // for data process
-
   int read_bufsize;
-  int recv_bufsize;
-  int write_size;
 
   // get IP from host name
   if ((hp = gethostbyname(argv[1])) == NULL) {
@@ -106,7 +152,7 @@ int main(int argc, char* argv[])
   bzero((char*) & addr.sin_addr, sizeof(addr.sin_addr));
   memcpy((char*) & addr.sin_addr, (char*)hp->h_addr, hp->h_length);
   addr.sin_family = AF_INET;
-  addr.sin_port = htons(PORT_NO);
+  addr.sin_port = htons(atoi(argv[2]));
 
   // make a connection
   if ((connect(cl_sock, (struct sockaddr *)&addr, sizeof(addr))) == -1) {
@@ -115,23 +161,29 @@ int main(int argc, char* argv[])
   }
 
   printf("================ Manual ================\n");
-  printf("%%Q   : Quit\n");
+  printf("Input CSV data or command (Uppercase)\n");
+  printf("%%Q   : Quit client\n");
   printf("%%C   : Check how many profiles you have\n");
   printf("%%P n : Print n profile(s)\n");
   printf("%%R file: Read file\n");
   printf("%%W file: Write data to file\n");
   printf("%%F word: Find word\n");
-  printf("%%S n: Sort nth column\n");
+  printf("%%S n: Sort by nth column\n");
   printf("========================================\n");
 
+  int csv_cnt = 0;
   while(1) {
-    memset(buf, '\0', BUFSIZE);
-    printf("\nInput command:\n");
+    fflush(stdout);
+    if (strchr(buf, ',') != NULL) {
+      // print nothing
+      ++csv_cnt;
+    } else {
+      printf("\nInput line:\n");
+    }
 
-    // read command input
-    if ((read_bufsize = read(0, buf, BUFSIZE)) == -1) {
-      perror("read");
-      return 1;
+    // get command input or csv data
+    if (get_line(stdin, buf) == 0) {
+      printf("error\n");
     }
 
     // send command line to the server from stdin
@@ -150,11 +202,10 @@ int main(int argc, char* argv[])
         case 'F': process_print(cl_sock); break;
         case 'S': process_else(cl_sock); break;
       default:
-        printf("command is not listed here\n");
         break;
       }
     } else {
-      //create_new_profile
+      process_csv(cl_sock);
     }
   }
   close(cl_sock);
