@@ -15,14 +15,24 @@ name_list_server:
 #include <ctype.h>
 #include <errno.h>
 
-#define PORT_NO 12222
 #define BUFSIZE 10000
 #define MAX_LINE_LEN 1024
 #define MAX_STR_LEN 69
+#define MSG_FLG "end"
 
 char sendbuf[BUFSIZE];
 int profile_data_nitems = 0; //CSVデータの数
 void parse_line(char *line, int sock);
+
+void endmsg(int new_sock)
+{
+  char replybuffer[10];
+  // データ送信終了を意味する"end"を送る
+  memset(replybuffer, 0, sizeof(replybuffer));
+  sprintf(replybuffer, MSG_FLG);
+  send(new_sock, replybuffer, sizeof(replybuffer),0);
+  return;
+}
 
 struct date {
   int y;
@@ -40,21 +50,7 @@ struct profile {
 
 struct profile profile_data_store[10000];
 
-/* trim_ncode: 改行コードの削除 */
-void trim_ncode(char *str)
-{
-  int i = 0;
-  while(1) {
-    if(str[i] == '\n') {
-      str[i] = '\0';
-      break;
-    }
-    i++;
-  }
-}
-
 /* subst: c1とc2の文字を入れ替える */
-
 int subst(char *str, char c1, char c2)
 {
   int n = 0;
@@ -70,7 +66,6 @@ int subst(char *str, char c1, char c2)
 }
 
 /* split: CSVデータを分割する */
-
 int split(char *str, char *ret[], char sep, int max) //sep: ','
 {
   int cnt = 0;
@@ -114,9 +109,6 @@ void fprint_profile_csv(FILE *fp, struct profile *p)
 {
   fprintf(fp, "%d,%s,%d-%d-%d,%s,%s\n", p->number, p->name, p->birthday.y,
 p->birthday.m, p->birthday.d, p->address, p->comment );
-
-  //printf("%d,%s,%d-%d-%d,%s,%s\n", p->number, p->name, p->birthday.y,
-  //p->birthday.m, p->birthday.d, p->address, p->comment );
 }
 
 /* print_profile: 5つの情報を出力する */
@@ -437,7 +429,6 @@ void cmd_read(char *filename, int sock)
   FILE *fp;
   char line[MAX_LINE_LEN + 1];
 
-  trim_ncode(filename);
   memset(sendbuf, '\0', BUFSIZE);
 
   if ((fp = fopen(filename, "r")) == NULL) {
@@ -463,7 +454,6 @@ void cmd_write(char *filename)
   FILE *fp;
   int i;
 
-  trim_ncode(filename);
   memset(sendbuf, '\0', BUFSIZE);
 
   if ((fp = fopen(filename, "w")) == NULL) {
@@ -492,7 +482,6 @@ void cmd_find(char *word, int sock)
   char printbuf[1024];
 
   memset(sendbuf, '\0', BUFSIZE);
-  trim_ncode(word);
   for (i=0; i<profile_data_nitems; i++) {
     p = &profile_data_store[i];
 
@@ -539,10 +528,6 @@ void cmd_find(char *word, int sock)
             perror("send");
             exit(1);
           }
-
-      printf("\n");
-    } else {
-      sprintf(sendbuf, "no match\n");
     }
   }
 }
@@ -589,11 +574,10 @@ void parse_line(char *line, int sock)
 {
   if (line[0] == '%') { //コマンド入力として処理
     exec_command(line[1], &line[3], sock);
-  } else if ( line[0] == '\n') {
+  } else if ( line[0] == '\n' || line[0] == '\0') {
     // do nothing
-  } else { //CSVの行を処理
-    new_profile(&profile_data_store[profile_data_nitems], line);
-    profile_data_nitems++;
+  } else if (strchr(line, ',') != NULL){ //CSVの行を処理
+    new_profile(&profile_data_store[profile_data_nitems++], line);
   }
 }
 
@@ -616,7 +600,7 @@ int main(int argc, char** argv)
   memset((char*)&addr, 0, sizeof(addr));
   addr.sin_family = AF_INET;
   addr.sin_addr.s_addr = htonl(INADDR_ANY);
-  addr.sin_port = htons(PORT_NO);
+  addr.sin_port = htons(atoi(argv[1]));
 
   printf("1. Created socket\n");
 
@@ -637,7 +621,6 @@ int main(int argc, char** argv)
 
   // 4. Accept connection request
   memset(sendbuf, '\0', BUFSIZE);
-
   cl_addr_len = sizeof(addr);
 
   while(1) {
@@ -650,7 +633,6 @@ int main(int argc, char** argv)
     // 5. Recieve command
     while(1) {
       memset(buf, '\0', BUFSIZE);
-
       if ((recv_bufsize = recv(new_sock, buf, BUFSIZE, 0)) == -1) {
         perror("recv");
         exit(1);
@@ -659,7 +641,7 @@ int main(int argc, char** argv)
         // do nothing
       }
 
-      printf("5. Received command\n");
+      printf("5. Received msg\n");
       printf("%s\n", buf);
 
       // 6. Process the command
@@ -676,24 +658,17 @@ int main(int argc, char** argv)
       } else if (buf[1] == 'P') {
         cmd_print(atoi(&buf[3]), new_sock);
         sleep(1);
-        memset(sendbuf, '\0', BUFSIZE);
-        sprintf(sendbuf, "end");
-
-        if ((recv_bufsize = send(new_sock, sendbuf, sizeof(sendbuf), 0)) == -1 ) {
-          perror("send");
-          exit(1);
-        }
+        endmsg(new_sock);
 
       } else if (buf[1] == 'F') {
         cmd_find(&buf[3], new_sock);
         sleep(1);
-        memset(sendbuf, '\0', BUFSIZE);
-        sprintf(sendbuf, "end");
+        endmsg(new_sock);
 
-        if ((recv_bufsize = send(new_sock, sendbuf, sizeof(sendbuf), 0)) == -1 ) {
-          perror("send");
-          exit(1);
-        }
+      } else if (strchr(buf, ',') != NULL) {
+        parse_line(buf, new_sock);
+        memset(buf, '\0', BUFSIZE);
+        endmsg(new_sock);
 
       } else {
         // parse command except %Q, %P & %F
